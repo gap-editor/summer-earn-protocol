@@ -61,14 +61,14 @@ export function FinishedAuctionCard({ auction, chainId }: FinishedAuctionCardPro
 
           <div className="space-y-2">
             <h3 className="text-lg font-semibold">Purchase History</h3>
-            {auction.purchases?.length === 0 ? (
+            {!auction.purchases || auction.purchases.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No purchases were made in this auction
               </p>
             ) : (
               <div className="space-y-2">
-                {auction
-                  .purchases!.sort((a, b) => parseInt(b.timestamp) - parseInt(a.timestamp))
+                {auction.purchases
+                  .sort((a, b) => parseInt(b.timestamp) - parseInt(a.timestamp))
                   .map((purchase) => (
                     <AuctionPurchase
                       key={purchase.id}
