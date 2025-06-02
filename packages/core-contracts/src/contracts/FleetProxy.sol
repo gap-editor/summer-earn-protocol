@@ -7,7 +7,7 @@ import {IBridgeQueue} from "@summerfi/chain-bridge/interfaces/IBridgeQueue.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-import {ProtocolAccessManaged, ContractSpecificRoles} from "@summerfi/access-contracts/contracts/ProtocolAccessManaged.sol";
+import {DeploymentController} from "@summerfi/access-contracts/contracts/DeploymentController.sol";
 import {IFleetCommander} from "../interfaces/IFleetCommander.sol";
 import {IFleetProxy} from "../interfaces/IFleetProxy.sol";
 import {IFleetCommanderConfigProvider} from "../interfaces/IFleetCommanderConfigProvider.sol";
@@ -22,7 +22,7 @@ import {ICrossChainAssetReceiver} from "@summerfi/chain-bridge/interfaces/ICross
  */
 contract CrossChainFleetProxy is
     IFleetProxy,
-    ProtocolAccessManaged,
+    DeploymentController,
     ReentrancyGuard,
     Pausable,
     IERC165
@@ -65,17 +65,19 @@ contract CrossChainFleetProxy is
 
     /**
      * @notice Initializes the CrossChainFleetProxy
-     * @param _accessManager Address of the access manager
+     * @param initialController Address of the initial controller (deployer)
+     * @param accessManager Address of the access manager
      * @param _bridgeRouter Address of the bridge router
      * @param _bridgeQueue Address of the bridge queue
      * @param _fleetContract Address of the Fleet contract this proxy covers
      */
     constructor(
-        address _accessManager,
+        address initialController,
+        address accessManager,
         address _bridgeRouter,
         address _bridgeQueue,
         address _fleetContract
-    ) ProtocolAccessManaged(_accessManager) {
+    ) DeploymentController(initialController, accessManager) {
         if (_bridgeRouter == address(0)) revert InvalidBridgeRouter();
         if (_bridgeQueue == address(0)) revert InvalidBridgeQueue();
         if (_fleetContract == address(0)) revert InvalidFleetContract();
@@ -114,7 +116,9 @@ contract CrossChainFleetProxy is
 
     /// @notice Updates the source chain ark address
     /// @param _sourceChainArk The new source chain ark address
-    function setSourceChainArk(address _sourceChainArk) external onlyGovernor {
+    function setSourceChainArk(
+        address _sourceChainArk
+    ) external onlyControllerOrGovernor {
         if (_sourceChainArk == address(0)) revert InvalidSourceChainArk();
         sourceChainArk = _sourceChainArk;
         emit SourceChainArkUpdated(_sourceChainArk);

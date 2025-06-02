@@ -102,6 +102,7 @@ contract CrossChainFleetProxyTest is Test {
         vm.stopPrank();
 
         proxy = new CrossChainFleetProxy(
+            governor,
             address(accessManager),
             address(mockBridgeRouter),
             address(mockBridgeQueue),
