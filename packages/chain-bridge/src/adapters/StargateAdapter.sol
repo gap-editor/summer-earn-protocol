@@ -2,22 +2,24 @@
 pragma solidity ^0.8.28;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IBridgeAdapter} from "../interfaces/IBridgeAdapter.sol";
-import {IBridgeRouter} from "../interfaces/IBridgeRouter.sol";
-import {ISendAdapter} from "../interfaces/ISendAdapter.sol";
-import {BridgeTypes} from "../libraries/BridgeTypes.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ICrossChainAssetReceiver} from "../interfaces/ICrossChainAssetReceiver.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
 
-// Stargate V2 interfaces - based on LayerZero V2 OFT standard
-import {SendParam, MessagingFee, MessagingReceipt, OFTReceipt, OFTLimit, OFTFeeDetail} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
-import {AddressCast} from "@layerzerolabs/lz-evm-protocol-v2/contracts/libs/AddressCast.sol";
-// Add LayerZero composability imports
 import {OptionsBuilder} from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 import {ILayerZeroComposer} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroComposer.sol";
+import {AddressCast} from "@layerzerolabs/lz-evm-protocol-v2/contracts/libs/AddressCast.sol";
+
+import {IBridgeAdapter} from "../interfaces/IBridgeAdapter.sol";
+import {IBridgeRouter} from "../interfaces/IBridgeRouter.sol";
+import {ISendAdapter} from "../interfaces/ISendAdapter.sol";
+import {ICrossChainAssetReceiver} from "../interfaces/ICrossChainAssetReceiver.sol";
+import {BridgeTypes} from "../libraries/BridgeTypes.sol";
+import {DeploymentAccessManaged} from "@summerfi/access-contracts/contracts/DeploymentAccessManaged.sol";
+
+// Stargate V2 interfaces - based on LayerZero V2 OFT standard
+import {SendParam, MessagingFee, MessagingReceipt, OFTReceipt, OFTLimit, OFTFeeDetail} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
 /**
@@ -94,7 +96,11 @@ library OftCmdHelper {
  * @notice Adapter for Stargate V2 Protocol - all V2 contracts are OFT-enabled
  * @dev Implements IBridgeAdapter interface and connects to Stargate V2 for efficient cross-chain transfers
  */
-contract StargateAdapter is Ownable, IBridgeAdapter, ILayerZeroComposer {
+contract StargateAdapter is
+    IBridgeAdapter,
+    ILayerZeroComposer,
+    DeploymentAccessManaged
+{
     using SafeERC20 for IERC20;
     using AddressCast for address;
     using OptionsBuilder for bytes;
@@ -205,15 +211,17 @@ contract StargateAdapter is Ownable, IBridgeAdapter, ILayerZeroComposer {
 
     /**
      * @notice Initializes the StargateAdapter
-     * @param _bridgeRouter Address of the BridgeRouter contract
-     * @param _owner Address of the contract owner
+     * @param _bridgeRouter Address of the bridge router to send messages through
+     * @param _deployer Address of the contract deployer
      * @param _lzEndpoint LayerZero endpoint for compose functionality
+     * @param _accessManager Address of the access manager for role-based access
      */
     constructor(
         address _bridgeRouter,
-        address _owner,
-        address _lzEndpoint
-    ) Ownable(_owner) {
+        address _deployer,
+        address _lzEndpoint,
+        address _accessManager
+    ) DeploymentAccessManaged(_deployer, _accessManager) {
         if (_bridgeRouter == address(0)) revert InvalidParams();
         if (_lzEndpoint == address(0)) revert InvalidParams();
 
@@ -228,16 +236,20 @@ contract StargateAdapter is Ownable, IBridgeAdapter, ILayerZeroComposer {
     /**
      * @notice Sets the minimum destination gas for calls
      * @param _minDstGasForCall New minimum gas value
+     * @dev Can be called by super keeper for operational tuning
      */
-    function setMinDstGasForCall(uint256 _minDstGasForCall) external onlyOwner {
+    function setMinDstGasForCall(
+        uint256 _minDstGasForCall
+    ) external onlySuperKeeper {
         minDstGasForCall = _minDstGasForCall;
     }
 
     /**
      * @notice Sets the default transport mode
      * @param _useTaxi True for taxi mode (immediate), false for bus mode (batched)
+     * @dev Can be called by super keeper for operational tuning
      */
-    function setDefaultTransportMode(bool _useTaxi) external onlyOwner {
+    function setDefaultTransportMode(bool _useTaxi) external onlySuperKeeper {
         defaultUseTaxi = _useTaxi;
         emit DefaultTransportModeChanged(_useTaxi);
     }
@@ -245,8 +257,11 @@ contract StargateAdapter is Ownable, IBridgeAdapter, ILayerZeroComposer {
     /**
      * @notice Sets the gas limit for compose execution
      * @param _composeGasLimit New gas limit for compose execution
+     * @dev Can be called by super keeper for operational tuning
      */
-    function setComposeGasLimit(uint256 _composeGasLimit) external onlyOwner {
+    function setComposeGasLimit(
+        uint256 _composeGasLimit
+    ) external onlySuperKeeper {
         if (
             _composeGasLimit < MIN_COMPOSE_GAS ||
             _composeGasLimit > MAX_COMPOSE_GAS
@@ -262,12 +277,13 @@ contract StargateAdapter is Ownable, IBridgeAdapter, ILayerZeroComposer {
      * @param chainId Chain ID in our system
      * @param endpointId Corresponding LayerZero Endpoint ID
      * @param adapterAddress Address of the StargateAdapter for this chain
+     * @dev Long-term configuration - deployer during deployment, governance after transition
      */
     function addSupportedChain(
         uint16 chainId,
         uint32 endpointId,
         address adapterAddress
-    ) external onlyOwner {
+    ) external onlyControllerOrGovernor {
         if (chainToEndpointId[chainId] != 0) revert InvalidParams();
 
         chainToEndpointId[chainId] = endpointId;
@@ -281,11 +297,12 @@ contract StargateAdapter is Ownable, IBridgeAdapter, ILayerZeroComposer {
      * @notice Updates the adapter address for an existing supported chain
      * @param chainId Chain ID in our system
      * @param adapterAddress New address of the StargateAdapter for this chain
+     * @dev Long-term configuration - deployer during deployment, governance after transition
      */
     function updateChainAdapter(
         uint16 chainId,
         address adapterAddress
-    ) external onlyOwner {
+    ) external onlyControllerOrGovernor {
         if (chainToEndpointId[chainId] == 0) revert InvalidParams();
 
         chainToAdapter[chainId] = adapterAddress;
@@ -295,11 +312,12 @@ contract StargateAdapter is Ownable, IBridgeAdapter, ILayerZeroComposer {
      * @notice Adds support for an asset on a specific chain
      * @param asset Address of the asset to support
      * @param stargateContract Address of the Stargate V2 contract for this asset
+     * @dev Long-term configuration - deployer during deployment, governance after transition
      */
     function addSupportedAsset(
         address asset,
         address stargateContract
-    ) external onlyOwner {
+    ) external onlyControllerOrGovernor {
         if (asset == address(0) || stargateContract == address(0))
             revert InvalidParams();
 
@@ -320,8 +338,11 @@ contract StargateAdapter is Ownable, IBridgeAdapter, ILayerZeroComposer {
     /**
      * @notice Updates the bridge router address
      * @param newBridgeRouter Address of the new bridge router
+     * @dev Critical infrastructure - deployer during deployment, governance after transition
      */
-    function setBridgeRouter(address newBridgeRouter) external onlyOwner {
+    function setBridgeRouter(
+        address newBridgeRouter
+    ) external onlyControllerOrGovernor {
         if (newBridgeRouter == address(0)) revert InvalidBridgeRouter();
 
         address oldRouter = bridgeRouter;
@@ -854,7 +875,7 @@ contract StargateAdapter is Ownable, IBridgeAdapter, ILayerZeroComposer {
 
     /**
      * @notice Emergency function to recover stuck tokens
-     * @dev Only callable by owner when tokens are stuck due to failed compose
+     * @dev Only callable by guardian or governor when tokens are stuck due to failed compose
      * @param asset Token address to recover
      * @param amount Amount to recover
      * @param recipient Address to send recovered tokens to
@@ -863,7 +884,7 @@ contract StargateAdapter is Ownable, IBridgeAdapter, ILayerZeroComposer {
         address asset,
         uint256 amount,
         address recipient
-    ) external onlyOwner {
+    ) external onlyGuardianOrGovernor {
         if (recipient == address(0)) revert InvalidParams();
 
         uint256 balance = IERC20(asset).balanceOf(address(this));

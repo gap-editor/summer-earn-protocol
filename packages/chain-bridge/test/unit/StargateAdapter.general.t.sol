@@ -7,9 +7,23 @@ import {BridgeTypes} from "../../src/libraries/BridgeTypes.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {IBridgeAdapter} from "../../src/interfaces/IBridgeAdapter.sol";
+import {IAccessControlErrors} from "@summerfi/access-contracts/interfaces/IAccessControlErrors.sol";
 import {MockStargateV2} from "../mocks/MockStargateV2.sol";
 
 contract StargateAdapterGeneralTest is StargateAdapterSetupTest {
+    function setUp() public override {
+        super.setUp();
+
+        // Grant super keeper role to governor for operational functions
+        useNetworkA();
+        vm.prank(governor);
+        accessManagerA.grantSuperKeeperRole(governor);
+
+        useNetworkB();
+        vm.prank(governor);
+        accessManagerB.grantSuperKeeperRole(governor);
+    }
+
     /*//////////////////////////////////////////////////////////////
                           ADAPTER FEATURES TESTS
     //////////////////////////////////////////////////////////////*/
@@ -50,7 +64,7 @@ contract StargateAdapterGeneralTest is StargateAdapterSetupTest {
         // Check current value
         assertEq(adapterA.minDstGasForCall(), 300000);
 
-        // Update the value as governor
+        // Update the value as governor (who has super keeper role)
         vm.prank(governor);
         adapterA.setMinDstGasForCall(400000);
 
@@ -65,7 +79,7 @@ contract StargateAdapterGeneralTest is StargateAdapterSetupTest {
         vm.prank(user);
         vm.expectRevert(
             abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
+                IAccessControlErrors.CallerIsNotSuperKeeper.selector,
                 user
             )
         );

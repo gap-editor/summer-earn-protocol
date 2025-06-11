@@ -16,6 +16,8 @@ import {PERCENTAGE_100} from "@summerfi/percentage-solidity/contracts/Percentage
 import {ArkTestBase} from "./ArkTestBase.sol";
 import {SendParam, MessagingFee, MessagingReceipt, OFTReceipt} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import {MockStargateV2} from "@summerfi/chain-bridge-test/mocks/MockStargateV2.sol";
+import {MockBridgeQueue} from "@summerfi/chain-bridge-test/mocks/MockBridgeQueue.sol";
+import {MockBridgeRouter} from "@summerfi/chain-bridge-test/mocks/MockBridgeRouter.sol";
 
 // Simple mock registry for fork testing
 contract SimpleMockRegistry is ICrossChainRegistry {
@@ -140,6 +142,12 @@ contract CrossChainArkForkTest is Test, ArkTestBase {
             address(bridgeQueue)
         );
 
+        // Transfer BridgeQueue to governance
+        bridgeQueue.transferToGovernance(governor);
+
+        // Transfer BridgeRouter to governance
+        bridgeRouter.transferToGovernance(governor);
+
         // Set the bridge router address in the queue
         vm.startPrank(governor);
         bridgeQueue.setBridgeRouter(address(bridgeRouter));
@@ -156,14 +164,16 @@ contract CrossChainArkForkTest is Test, ArkTestBase {
             address(bridgeRouter),
             supportedChains,
             lzEids,
-            governor
+            governor,
+            address(accessManager)
         );
 
         // Setup Stargate adapter
         stargateAdapter = new StargateAdapter(
             address(bridgeRouter),
             governor,
-            LZ_ENDPOINT_MAINNET
+            LZ_ENDPOINT_MAINNET,
+            address(accessManager)
         );
 
         // Register adapters with router
@@ -519,4 +529,39 @@ contract CrossChainArkForkTest is Test, ArkTestBase {
         uint256 amount,
         address recipient
     );
+
+    function test_DeploymentController() public {
+        // Create access manager
+        accessManager = new ProtocolAccessManager(governor);
+
+        // Initialize mock contracts
+        queue = new MockBridgeQueue();
+        router = new MockBridgeRouter();
+
+        // Create Ark with bridge configuration
+        ArkParams memory params = ArkParams({
+            name: "TestArk",
+            details: "TestArk details",
+            accessManager: address(accessManager),
+            configurationManager: address(configurationManager),
+            asset: address(usdc),
+            depositCap: type(uint256).max,
+            maxRebalanceOutflow: type(uint256).max,
+            maxRebalanceInflow: type(uint256).max,
+            requiresKeeperData: false,
+            maxDepositPercentageOfTVL: PERCENTAGE_100
+        });
+
+        ark = new CrossChainArk(
+            address(queue),
+            address(router),
+            DEST_CHAIN_ID,
+            params
+        );
+
+        // Set the target proxy using governor (no deployment phase anymore)
+        vm.prank(governor);
+        ark.setTargetProxy(ARB_PROXY);
+        assertEq(ark.targetProxy(), ARB_PROXY, "Target proxy should be set");
+    }
 }

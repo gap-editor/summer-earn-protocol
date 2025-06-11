@@ -7,7 +7,7 @@ import {IBridgeQueue} from "@summerfi/chain-bridge/interfaces/IBridgeQueue.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-import {ProtocolAccessManaged, ContractSpecificRoles} from "@summerfi/access-contracts/contracts/ProtocolAccessManaged.sol";
+import {DeploymentAccessManaged} from "@summerfi/access-contracts/contracts/DeploymentAccessManaged.sol";
 import {IFleetCommander} from "../interfaces/IFleetCommander.sol";
 import {IFleetProxy} from "../interfaces/IFleetProxy.sol";
 import {IFleetCommanderConfigProvider} from "../interfaces/IFleetCommanderConfigProvider.sol";
@@ -23,7 +23,7 @@ import {ICrossChainRegistry} from "../interfaces/ICrossChainRegistry.sol";
  */
 contract CrossChainFleetProxy is
     IFleetProxy,
-    ProtocolAccessManaged,
+    DeploymentAccessManaged,
     ReentrancyGuard,
     Pausable,
     IERC165
@@ -95,19 +95,21 @@ contract CrossChainFleetProxy is
 
     /**
      * @notice Initializes the CrossChainFleetProxy
-     * @param _accessManager Address of the access manager
+     * @param initialController Address of the initial controller (deployer)
+     * @param accessManager Address of the access manager
      * @param _bridgeRouter Address of the bridge router
      * @param _bridgeQueue Address of the bridge queue
      * @param _crossChainRegistry Address of the CrossChainRegistry contract
      * @param _fleetContract Address of the Fleet contract this proxy covers
      */
     constructor(
-        address _accessManager,
+        address initialController,
+        address accessManager,
         address _bridgeRouter,
         address _bridgeQueue,
         address _crossChainRegistry,
         address _fleetContract
-    ) ProtocolAccessManaged(_accessManager) {
+    ) DeploymentAccessManaged(initialController, accessManager) {
         if (_bridgeRouter == address(0)) revert InvalidBridgeRouter();
         if (_bridgeQueue == address(0)) revert InvalidBridgeQueue();
         if (_crossChainRegistry == address(0)) revert InvalidRegistry();

@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity ^0.8.28;
+pragma solidity 0.8.28;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IERC20, SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IBridgeRouter} from "../interfaces/IBridgeRouter.sol";
 import {IBridgeAdapter} from "../interfaces/IBridgeAdapter.sol";
+import {ICrossChainAssetReceiver} from "../interfaces/ICrossChainAssetReceiver.sol";
+import {DeploymentAccessManaged} from "@summerfi/access-contracts/contracts/DeploymentAccessManaged.sol";
+import {IAccessControlErrors} from "@summerfi/access-contracts/interfaces/IAccessControlErrors.sol";
 import {BridgeTypes} from "../libraries/BridgeTypes.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {ProtocolAccessManaged} from "@summerfi/access-contracts/contracts/ProtocolAccessManaged.sol";
 import {ISendAdapter} from "../interfaces/ISendAdapter.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {ICrossChainStateReadReceiver} from "../interfaces/ICrossChainStateReadReceiver.sol";
 import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
 import {ICrossChainArk} from "../interfaces/ICrossChainArk.sol";
@@ -20,7 +22,11 @@ import {ICrossChainArk} from "../interfaces/ICrossChainArk.sol";
  * @dev Implements IBridgeRouter interface and manages multiple bridge adapters.
  *      Operations can only be initiated via the BridgeQueue or governance.
  */
-contract BridgeRouter is IBridgeRouter, ProtocolAccessManaged, ReentrancyGuard {
+contract BridgeRouter is
+    IBridgeRouter,
+    DeploymentAccessManaged,
+    ReentrancyGuard
+{
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -69,7 +75,7 @@ contract BridgeRouter is IBridgeRouter, ProtocolAccessManaged, ReentrancyGuard {
     constructor(
         address accessManager,
         address _bridgeQueue
-    ) ProtocolAccessManaged(accessManager) {
+    ) DeploymentAccessManaged(msg.sender, accessManager) {
         bridgeQueue = _bridgeQueue;
         emit BridgeQueueUpdated(_bridgeQueue);
     }
@@ -742,7 +748,9 @@ contract BridgeRouter is IBridgeRouter, ProtocolAccessManaged, ReentrancyGuard {
     //////////////////////////////////////////////////////////////*/
 
     /// @inheritdoc IBridgeRouter
-    function registerAdapter(address adapter) external onlyGovernor {
+    function registerAdapter(
+        address adapter
+    ) external onlyControllerOrGovernor {
         if (adapters.contains(adapter)) revert AdapterAlreadyRegistered();
 
         adapters.add(adapter);
@@ -750,7 +758,7 @@ contract BridgeRouter is IBridgeRouter, ProtocolAccessManaged, ReentrancyGuard {
     }
 
     /// @inheritdoc IBridgeRouter
-    function removeAdapter(address adapter) external onlyGovernor {
+    function removeAdapter(address adapter) external onlyControllerOrGovernor {
         if (!adapters.contains(adapter)) revert UnknownAdapter();
 
         adapters.remove(adapter);
@@ -785,7 +793,7 @@ contract BridgeRouter is IBridgeRouter, ProtocolAccessManaged, ReentrancyGuard {
     function setChainRouterAddress(
         uint16 chainId,
         address routerAddress
-    ) external onlyGovernor {
+    ) external onlyControllerOrGovernor {
         chainToRouterAddress[chainId] = routerAddress;
         emit ChainRouterAddressUpdated(chainId, routerAddress);
     }
@@ -812,7 +820,9 @@ contract BridgeRouter is IBridgeRouter, ProtocolAccessManaged, ReentrancyGuard {
 
     /// @notice Sets the BridgeQueue address. Can only be called by governance.
     /// @param _newBridgeQueue The new BridgeQueue address
-    function setBridgeQueue(address _newBridgeQueue) external onlyGovernor {
+    function setBridgeQueue(
+        address _newBridgeQueue
+    ) external onlyControllerOrGovernor {
         if (_newBridgeQueue == address(0)) revert InvalidBridgeQueue();
         bridgeQueue = _newBridgeQueue;
         emit BridgeQueueUpdated(_newBridgeQueue);

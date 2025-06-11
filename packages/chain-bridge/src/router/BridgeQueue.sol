@@ -6,17 +6,18 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IBridgeRouter} from "../interfaces/IBridgeRouter.sol";
 import {BridgeTypes} from "../libraries/BridgeTypes.sol";
-import {ProtocolAccessManaged} from "@summerfi/access-contracts/contracts/ProtocolAccessManaged.sol";
+import {DeploymentAccessManaged} from "@summerfi/access-contracts/contracts/DeploymentAccessManaged.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IBridgeQueue} from "../interfaces/IBridgeQueue.sol";
 import {ICrossChainArk} from "../interfaces/ICrossChainArk.sol";
+import {ISendAdapter} from "../interfaces/ISendAdapter.sol";
 
 /**
  * @title BridgeQueue
  * @notice Queues cross-chain operations (transfers, reads, messages) for later execution by keepers.
  * @dev Interacts with a BridgeRouter to get quotes and trigger executions. Implements IBridgeQueue.
  */
-contract BridgeQueue is IBridgeQueue, ProtocolAccessManaged, ReentrancyGuard {
+contract BridgeQueue is IBridgeQueue, DeploymentAccessManaged, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     /*//////////////////////////////////////////////////////////////
@@ -112,7 +113,7 @@ contract BridgeQueue is IBridgeQueue, ProtocolAccessManaged, ReentrancyGuard {
         address _accessManager,
         address _initialBridgeRouter,
         address _initialQueueManager
-    ) ProtocolAccessManaged(_accessManager) {
+    ) DeploymentAccessManaged(msg.sender, _accessManager) {
         if (_initialQueueManager == address(0)) revert InvalidQueueManager(); // Use error for initial manager too
 
         bridgeRouter = _initialBridgeRouter;
@@ -469,7 +470,9 @@ contract BridgeQueue is IBridgeQueue, ProtocolAccessManaged, ReentrancyGuard {
     //////////////////////////////////////////////////////////////*/
 
     /// @inheritdoc IBridgeQueue
-    function setBridgeRouter(address _newBridgeRouter) external onlyGovernor {
+    function setBridgeRouter(
+        address _newBridgeRouter
+    ) external onlyControllerOrGovernor {
         if (_newBridgeRouter == address(0)) revert InvalidBridgeRouter();
 
         // Verify that the new router supports the required interface
@@ -488,7 +491,9 @@ contract BridgeQueue is IBridgeQueue, ProtocolAccessManaged, ReentrancyGuard {
     }
 
     /// @inheritdoc IBridgeQueue
-    function addQueueManager(address manager) external onlyGovernor {
+    function addQueueManager(
+        address manager
+    ) external onlyControllerOrGovernor {
         if (manager == address(0)) revert InvalidQueueManager();
         if (!isQueueManager[manager]) {
             isQueueManager[manager] = true;
@@ -497,7 +502,9 @@ contract BridgeQueue is IBridgeQueue, ProtocolAccessManaged, ReentrancyGuard {
     }
 
     /// @inheritdoc IBridgeQueue
-    function removeQueueManager(address manager) external onlyGovernor {
+    function removeQueueManager(
+        address manager
+    ) external onlyControllerOrGovernor {
         if (manager == address(0)) revert InvalidQueueManager(); // Also check for zero address on removal
         if (isQueueManager[manager]) {
             isQueueManager[manager] = false;
